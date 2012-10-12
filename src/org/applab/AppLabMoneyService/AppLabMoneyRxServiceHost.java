@@ -38,7 +38,7 @@ public class AppLabMoneyRxServiceHost {
         String hostIpAddressStr = (hostIpAddress != null) ? hostIpAddress.getHostAddress() : "localhost";
 
         // Give it an Endpoint Address: This I will be getting from a config file
-        String url = "http://".concat(hostIpAddressStr).concat(":80/AppLabMoneyRxService");
+        String url = "http://".concat(hostIpAddressStr).concat(":9908/AppLabMoneyRxService");
         Endpoint endpoint1 = null;
 
         try {
