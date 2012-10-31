@@ -356,7 +356,8 @@ public class UssdProcessingEngine {
 									urt.getSourceMsisdn(),
 									urt.getFinalTransKeyword());
 							// Invoke the Static Method on the RxService
-							HelperUtils.writeToLogFile("console", "Sending to TPE: " + transCommand);
+							HelperUtils.writeToLogFile("console",
+									"Sending to TPE: " + transCommand);
 							AppLabMoneyRxService
 									.processReceivedData(transCommand);
 						}
@@ -561,6 +562,7 @@ public class UssdProcessingEngine {
 			ResultSet result = stm.executeQuery();
 
 			while (result.next()) {
+
 				// Build the String containing menuItemName then menuItemId
 				// separated by the Tide character
 				String menuItem = String.format("%s~%s", result.getString(2),
@@ -635,15 +637,17 @@ public class UssdProcessingEngine {
 
 		// Obtain the active categories from the database
 		// OMM: the menu at this point has menuItemName~menuItemId
-		 UssdMenu rootMenu = createRootMenu();
-		 rootMenu.setTitle("me2me");
+		UssdMenu rootMenu = createRootMenu();
+		rootMenu.setTitle("me2me");
 
 		// OMM: at this point consider removing the ID
-		 appResp.responseToSubscriber = rootMenu.getMenuStringForDisplay();
-		
-		//OMM: Challenge with the below is that we are hard-coding the ParentMenuId = 5
-		//Yet we are not guaranteed that it will always be like that when the database is populated
-		//appResp = getUssdSubMenu(request, 5);
+		appResp.responseToSubscriber = rootMenu.getMenuStringForDisplay();
+
+		// OMM: Challenge with the below is that we are hard-coding the
+		// ParentMenuId = 5
+		// Yet we are not guaranteed that it will always be like that when the
+		// database is populated
+		// appResp = getUssdSubMenu(request, 5);
 		isCompleted = 0;
 
 		return appResp;
@@ -767,10 +771,11 @@ public class UssdProcessingEngine {
 					// && (stepMenu.getKeywordCode() == "CRGL")) {
 					ArrayList<String> predefListForCrgl = getPredefInputItems(stepMenu
 							.getPredefInputId());
-					SimpleDateFormat df = new SimpleDateFormat("dd MMM yyyy");
+					SimpleDateFormat df = new SimpleDateFormat("dd MM yyyy");
 					Calendar cal = Calendar.getInstance();
 					String maturityDateStr = "";
-					Date maturityDate = null;
+					String monthIndicator = null;
+					int countOfMonthsIndicator = 0;
 
 					for (int countOfMonths = 0; countOfMonths < predefListForCrgl
 							.size(); countOfMonths++) {
@@ -780,7 +785,20 @@ public class UssdProcessingEngine {
 						if (countOfMonths == 1) {
 							cal.add(Calendar.DAY_OF_MONTH, 1);
 						}
-						maturityDateStr = df.format(cal.getTime());
+
+						// Normalise count of months
+						countOfMonthsIndicator = countOfMonths + 1;
+
+						if (countOfMonths == 0) {
+							monthIndicator = countOfMonthsIndicator
+									+ " MONTH : ";
+						} else {
+							monthIndicator = countOfMonthsIndicator
+									+ " MONTHS : ";
+						}
+						// format: 1 Month : 25 11 2012
+						maturityDateStr = monthIndicator
+								+ df.format(cal.getTime());
 						dateListForCrgl.add(maturityDateStr);
 					}
 					stepMenu.setPredefInputValues(dateListForCrgl);
@@ -923,18 +941,35 @@ public class UssdProcessingEngine {
 					predefListForCrgl = getPredefInputItems(stepMenu
 							.getPredefInputId());
 					dateListForCrgl = new ArrayList<String>();
-					SimpleDateFormat df = new SimpleDateFormat("dd MMM yyyy");
+					SimpleDateFormat df = new SimpleDateFormat("dd MM yyyy");
 					Calendar cal = Calendar.getInstance();
 					String maturityDateStr = "";
 					Date maturityDate = null;
+					String monthIndicator = null;
+					int countOfMonthsIndicator = 0;
 
-					for (int countOfMonths = 1; countOfMonths <= predefListForCrgl
+					for (int countOfMonths = 0; countOfMonths < predefListForCrgl
 							.size(); countOfMonths++) {
+						// cal.add(Calendar.MONTH, Integer
+						// .parseInt(predefListForCrgl.get(countOfMonths)));
 						cal.add(Calendar.MONTH, 1);
 						if (countOfMonths == 1) {
 							cal.add(Calendar.DAY_OF_MONTH, 1);
 						}
-						maturityDateStr = df.format(cal.getTime());
+
+						// Normalise count of months
+						countOfMonthsIndicator = countOfMonths + 1;
+
+						if (countOfMonths == 0) {
+							monthIndicator = countOfMonthsIndicator
+									+ " MONTH : ";
+						} else {
+							monthIndicator = countOfMonthsIndicator
+									+ " MONTHS : ";
+						}
+						// format: 1 Month : 25 11 2012
+						maturityDateStr = monthIndicator
+								+ df.format(cal.getTime());
 						dateListForCrgl.add(maturityDateStr);
 					}
 					stepMenu.setPredefInputValues(dateListForCrgl);
@@ -1272,8 +1307,9 @@ public class UssdProcessingEngine {
 					keywordsToExclude = keywordsToExclude
 							.concat("'CRGL','MTOM','GBAL','TENQ','REDM','REBT','STOP','ALTG'");
 				} else {
-					keywordsToExclude = keywordsToExclude.concat(",").concat(
-							"'CRGL','MTOM','GBAL','TENQ','REDM','REBT','STOP','ALTG'");
+					keywordsToExclude = keywordsToExclude
+							.concat(",")
+							.concat("'CRGL','MTOM','GBAL','TENQ','REDM','REBT','STOP','ALTG'");
 				}
 			}
 
@@ -1314,11 +1350,11 @@ public class UssdProcessingEngine {
 		Connection cn = null;
 		ArrayList<Integer> dealerMenuItemIds = null;
 		StringBuffer sb = null;
-		
+
 		try {
 			dealerMenuItemIds = new ArrayList<Integer>();
 			String specificMenuItemNamesToExclude = "'CHANGE OR STOP GOAL'";
-			
+
 			cn = DatabaseHelper.getConnection(HelperUtils.TARGET_DATABASE);
 
 			sb = new StringBuffer();
@@ -1327,7 +1363,8 @@ public class UssdProcessingEngine {
 			String query = sb.toString();
 
 			PreparedStatement stm = cn.prepareStatement(String.format(query,
-					keywordsToExclude.toUpperCase(),specificMenuItemNamesToExclude));
+					keywordsToExclude.toUpperCase(),
+					specificMenuItemNamesToExclude));
 
 			// Execute the Query
 			ResultSet result = stm.executeQuery();
