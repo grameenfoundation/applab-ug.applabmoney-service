@@ -22,6 +22,7 @@ import org.applab.AppLabMoneyCore.*;
 public class UssdProcessingEngine {
 	public int isCompleted = 0;
 	private boolean transParamCaptureCompleted = false;
+	private boolean confirmationPromptDone = false;
 	private String sourceMsisdn = "";
 
 	public UssdResponse getResponse(UssdRequest request) {
@@ -33,6 +34,7 @@ public class UssdProcessingEngine {
 			// Pre-Execution Tasks
 			// a. Set Completed flag to false
 			transParamCaptureCompleted = false;
+			
 
 			// first, Validate the Request
 			if (!validateUssdRequest(request)) {
@@ -252,7 +254,7 @@ public class UssdProcessingEngine {
 							// Remove the numbering
 							if (selectedPredef.contains(".")) {
 								selectedPredef = selectedPredef.substring(
-										selectedPredef.indexOf("."),
+										selectedPredef.indexOf(".")+1,
 										selectedPredef.length());
 							}
 							// remove the Input_Item_Id
@@ -355,6 +357,52 @@ public class UssdProcessingEngine {
 									urt.getTransactionId(),
 									urt.getSourceMsisdn(),
 									urt.getFinalTransKeyword());
+							
+							//Check whether the Keyword requires Prompt
+							if (true && null != urt.getFinalTransKeyword()) {
+							    String confirmationTitle = "CONFIRMATION:\r\n";
+							    String confirmationPrompt = getConfirmationPrompt(urt.getFinalTransKeyword());							    
+							    String confirmOptions = getConfirmationOptions();
+							    String finalPromptMsg = confirmationTitle + confirmationPrompt.concat(confirmOptions);
+							    
+							    // Add This User Input to the threadRequests
+		                        uisr = new UserInputSystemResponse();
+
+		                        // Increment the Sequence Number
+		                        uisr.setSequenceNum(urt.getThreadRequests().size() + 1);
+		                        uisr.setTransactionId(request.transactionId);
+		                        uisr.setUserInput(request.userInput);
+		                        
+		                        uisr.setSystemResponse(finalPromptMsg);
+
+		                        // Ensure the UISR is defined as a CONFIRM_SCREEN
+		                        uisr.setExtData1("CONFIRM_SCREEN");		                        
+		                        uisr.setExtData2("BNLOOKUP_CONFIRM");
+		                        
+		                        appResp.responseToSubscriber = uisr.getSystemResponse();
+		                        
+		                     // Add the new UISR to the existing Thread Requests
+		                        tRequests = urt.getThreadRequests();
+		                        tRequests.add(uisr);
+		                        urt.setThreadRequests(tRequests);
+
+		                        // Generate the XML Representation of the
+		                        // UssdRequestsThread
+		                        xmlThreadHistory = UssdRequestThread
+		                                .transformRequestThreadToXml(urt);
+		                        urt.setXmlThreadHistory(xmlThreadHistory);
+
+		                        // Save the Thread to DB
+		                        retVal = urt.saveThreadChanges();
+
+		                        // If an error occurs then force Failure
+		                        if (!retVal) {
+		                            appResp.responseToSubscriber = "Error Processing USSD Request";
+		                        }
+		                        	
+		                        //For now just return
+		                        return appResp;
+							}
 							// Invoke the Static Method on the RxService
 							HelperUtils.writeToLogFile("console", "Sending to TPE: " + transCommand);
 							AppLabMoneyRxService
@@ -1295,7 +1343,7 @@ public class UssdProcessingEngine {
 				return false;
 			}
 
-			// Check whether the sourceMsisdn is DLER or AGNT
+			// Check whether the s|ourceMsisdn is DLER or AGNT			
 			int sourceAccountTypeBitmap = sourceCustInfo.getAccountTypeBitmap();
 			if ((sourceAccountTypeBitmap & (org.applab.AppLabMoneyCore.HelperUtils.BITMAP_AGNT | org.applab.AppLabMoneyCore.HelperUtils.BITMAP_DLER)) == 0) {
 				return false;
@@ -1317,7 +1365,7 @@ public class UssdProcessingEngine {
 		
 		try {
 			dealerMenuItemIds = new ArrayList<Integer>();
-			String specificMenuItemNamesToExclude = "'CHANGE OR STOP GOAL'";
+			String specificMenuItemNamesToExclude = "'NOTHING'";
 			
 			cn = DatabaseHelper.getConnection(HelperUtils.TARGET_DATABASE);
 
@@ -1343,4 +1391,89 @@ public class UssdProcessingEngine {
 			return new ArrayList<Integer>();
 		}
 	}
+
+	private String getConfirmationPrompt(String transactionParameters) {
+	    String[] params = null;
+	    String transactionKeyword = null;
+	    String msg = "Confirm Transaction";
+	    
+	    
+	    try {
+	        params = transactionParameters.split(" ");
+	        transactionKeyword = params[0].toUpperCase();
+	        
+	        if(transactionKeyword.equalsIgnoreCase("CRGL")) {
+	            //[CRGL, HOME, 54656, .*21*Apr*2013, WEEKLY, PARTIAL, 4321]
+	            String cashOutDate = params[3].replaceAll("\\*", " ");
+	            String goalName = params[1].replaceAll("\\*", " ");
+	            double amount = 0;
+	            try {
+	                amount = Double.parseDouble(params[2]);
+	            } 
+	            catch (Exception exAmount) {
+	                amount = 0;
+	                HelperUtils.writeToLogFile("Server", "ERR: " + exAmount.getMessage()
+	                        + " TRACE: " + exAmount.getStackTrace());
+	            }
+	            	            
+	            msg = String.format("Create a %s goal of UGX%,.0f to be cashed-out on %s?\r\n",goalName,amount,cashOutDate);
+	        } else if(transactionKeyword.equalsIgnoreCase("MTOM")) {
+	            //[MTOM, BUSINESS, 45473, 4321]
+	            String goalName = params[1].replaceAll("\\*", " ");
+	            double amount = 0;
+                try {
+                    amount = Double.parseDouble(params[2]);
+                } 
+                catch (Exception exAmount) {
+                    amount = 0;
+                    HelperUtils.writeToLogFile("Server", "ERR: " + exAmount.getMessage()
+                            + " TRACE: " + exAmount.getStackTrace());
+                }
+	            msg = String.format("Send UGX%,.0f to your %s goal?\r\n", amount, goalName);
+	            
+	        } else if(transactionKeyword.equalsIgnoreCase("REDM")) {
+	            
+                msg = String.format("Cash Out your %s goal?\r\n", params[1]);
+	        } else if(transactionKeyword.equalsIgnoreCase("STOP")) {
+                
+                msg = String.format("Stop your %s goal?\r\n", params[1]);
+            } else if(transactionKeyword.equalsIgnoreCase("REBT")) {
+                String goalName = params[1].replaceAll("\\*", " ");
+                double amount = 0;
+                try {
+                    amount = Double.parseDouble(params[2]);
+                } 
+                catch (Exception exAmount) {
+                    amount = 0;
+                    HelperUtils.writeToLogFile("Server", "ERR: " + exAmount.getMessage()
+                            + " TRACE: " + exAmount.getStackTrace());
+                }
+                msg = String.format("Making an Early-Withdrawal will incur a penalty.\r\nWithdraw UGX%,.0f from your %s goal?\r\n", amount, goalName);
+            }
+	        
+	        
+	        return msg;
+	    } catch (Exception ex) {
+	        return "Please Confirm the Transaction.";
+	    }
+	}
+	
+	private String getConfirmationOptions(int predefinedInputId) {
+	    try {
+	        if(predefinedInputId != -1) {
+	            return "\r\n 1. YES \r\n 2. NO";
+	        } 
+	        else {
+	            return "\r\n 1. YES \r\n 2. CANCEL";
+	        }	            
+	        
+	    } catch (Exception ex) {
+	        return "\r\n 1. YES \r\n 2. NO";
+	    }
+	}
+	
+	private String getConfirmationOptions() {
+	    return getConfirmationOptions(-1);
+	}
+	
 }
